@@ -1,0 +1,19 @@
+[package]
+name = "waitpidx"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+classic_bpf = "0.1.1"
+crossbeam-channel = "0.5.11"
+libc = "0.2"
+linux-raw-sys = { version = "0.6.3", features = ["netlink"] }
+memoffset = "0.9"
+rustix = { version = "0.38.30", features = ["event", "process", "net"] }
+tokio = { version = "1.35.1", features = ["net"], optional = true }
+
+[features]
+default = ["async"]
+async = ["dep:tokio"]
