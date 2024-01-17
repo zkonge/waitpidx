@@ -29,10 +29,10 @@ async fn main() {
 }
 ```
 
-# Implementation
+# Waiter backends
 
 + pidfd_open (Linux 5.3+, default)
-+ netlink with cBPF (Linux 2.6.9+)
++ netlink with cBPF (Linux 3.19+)
 
 # Feature
 
