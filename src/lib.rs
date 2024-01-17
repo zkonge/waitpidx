@@ -51,3 +51,6 @@ pub async fn waitpid_async(pid: u32) -> io::Result<()> {
 
     Ok(())
 }
+
+#[cfg(not(target_os = "linux"))]
+compile_error!("waitpidx only supports Linux");
