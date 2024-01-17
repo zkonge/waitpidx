@@ -16,8 +16,10 @@ use super::binding::{
     cb_id, cn_msg, exit_proc_event, nlmsghdr, proc_cn_event, proc_event, CN_IDX_PROC, CN_VAL_PROC,
 };
 
-fn assembly_filter(pid: &[Pid]) -> Vec<BPFFilter> {
-    let mut filter = Vec::with_capacity(15 /* head */ + 1 /* tail */ + 3 /* pid asm */ * pid.len());
+// cBPF modified from https://github.com/Parrot-Developers/fusion/blob/master/pidwatch/src/pidwatch.c
+// with BSD-3-Clause license
+fn assembly_filter(pids: &[Pid]) -> Vec<BPFFilter> {
+    let mut filter = Vec::with_capacity(15 /* head */ + 1 /* tail */ + 3 /* pid asm */ * pids.len());
 
     filter.extend([
         /* check message's type is NLMSG_DONE */
@@ -67,7 +69,7 @@ fn assembly_filter(pid: &[Pid]) -> Vec<BPFFilter> {
         B::bpf_stmt(BPF_RET | BPF_K, 0x0), /* message is dropped */
     ]);
 
-    for p in pid {
+    for p in pids {
         filter.extend([
             /* check the pid matches */
             B::bpf_stmt(
