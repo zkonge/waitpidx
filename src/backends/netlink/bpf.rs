@@ -1,4 +1,7 @@
-use std::{io, mem::size_of};
+use std::{
+    io::{Error, Result},
+    mem::size_of,
+};
 
 use classic_bpf::*;
 use linux_raw_sys::netlink::NLMSG_DONE;
@@ -9,7 +12,7 @@ use rustix::{
 };
 use BPFFilter as B;
 
-use super::{
+use super::binding::{
     cb_id, cn_msg, exit_proc_event, nlmsghdr, proc_cn_event, proc_event, CN_IDX_PROC, CN_VAL_PROC,
 };
 
@@ -93,8 +96,12 @@ fn assembly_filter(pid: &[Pid]) -> Vec<BPFFilter> {
     filter
 }
 
-pub fn apply_bpf_filter(fd: BorrowedFd, pid: &[Pid]) -> io::Result<()> {
+pub fn apply_bpf_filter(fd: BorrowedFd, pid: &[Pid]) -> Result<()> {
     BPFFProg::new(&assembly_filter(pid))
         .attach_filter(fd.as_raw_fd())
-        .map_err(io::Error::from_raw_os_error)
+        .map_err(Error::from_raw_os_error)
+}
+
+pub fn detach_bpf_filter(fd: BorrowedFd) -> Result<()> {
+    detach_filter(fd.as_raw_fd()).map_err(Error::from_raw_os_error)
 }

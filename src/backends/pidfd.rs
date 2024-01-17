@@ -7,9 +7,8 @@ use rustix::{
     event::{poll, PollFd, PollFlags},
     process::{pidfd_open, Pid, PidfdFlags},
 };
-use tokio::io::unix::AsyncFd;
 
-use super::{AsyncBackend, Backend};
+use super::Backend;
 
 #[derive(Debug)]
 pub struct PidFdBackend;
@@ -19,7 +18,7 @@ impl Backend for PidFdBackend {
         let fd = pidfd_open(pid, PidfdFlags::empty())?;
         let timeout = match timeout {
             Some(dur) => dur.as_millis().try_into().unwrap_or(i32::MAX),
-            None => -1, // Infinite.
+            None => -1, // infinity
         };
 
         let mut fds = [PollFd::new(&fd, PollFlags::IN)];
@@ -31,11 +30,12 @@ impl Backend for PidFdBackend {
     }
 }
 
-impl AsyncBackend for PidFdBackend {
-    async fn async_waitpid(&self, pid: Pid) -> io::Result<()> {
+#[cfg(feature = "async")]
+impl super::AsyncBackend for PidFdBackend {
+    async fn waitpid_async(&self, pid: Pid) -> io::Result<()> {
         let fd = pidfd_open(pid, PidfdFlags::empty())?;
 
-        let _ = AsyncFd::new(fd)?.readable().await?;
+        let _ = tokio::io::unix::AsyncFd::new(fd)?.readable().await?;
 
         Ok(())
     }

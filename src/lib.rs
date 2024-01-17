@@ -1,39 +1,52 @@
-use std::{io, sync::Arc, time::Duration};
+use std::{io, time::Duration};
 
-use backends::{Backend, NetlinkBackend, PidFdBackend};
+use backends::*;
 use rustix::process::Pid;
 
 mod backends;
 mod utils;
 
+pub use utils::process_exists;
+
+#[allow(unreachable_code)] // while netlink feature disabled
 pub fn waitpid(pid: u32, timeout: Option<Duration>) -> io::Result<()> {
     let pid = Pid::from_raw(pid as i32).ok_or(io::ErrorKind::InvalidInput)?;
 
     // 1. try pidfd
     match PidFdBackend.waitpid(pid, timeout) {
+        // kernel 5.2- doesn't support pidfd_open, try netlink
+        #[cfg(feature = "netlink")]
         Err(e) if e.kind() == io::ErrorKind::Unsupported => (),
         r => return r,
     }
 
     // 2. try netlink
-    let nl = Arc::new(NetlinkBackend::new()?);
+    #[cfg(feature = "netlink")]
+    {
+        let netlink = NetlinkBackend::new()?;
+        netlink.waitpid(pid, timeout)?;
+    }
 
-    let nlc = nl.clone();
-    std::thread::spawn(move || {
-        nl.handle_events().unwrap();
-    });
+    Ok(())
+}
 
-    let c = nlc.interest(pid)?;
+#[cfg(feature = "async")]
+pub async fn waitpid_async(pid: u32) -> io::Result<()> {
+    let pid = Pid::from_raw(pid as i32).ok_or(io::ErrorKind::InvalidInput)?;
 
-    match timeout {
-        Some(timeout) => {
-            if c.recv_timeout(timeout).is_err() {
-                return Err(io::ErrorKind::TimedOut.into());
-            }
-        }
-        None => {
-            c.recv().unwrap();
-        }
+    // 1. try pidfd
+    match PidFdBackend.waitpid_async(pid).await {
+        // kernel 5.2- doesn't support pidfd_open, try netlink
+        #[cfg(feature = "netlink")]
+        Err(e) if e.kind() == io::ErrorKind::Unsupported => (),
+        r => return r,
+    }
+
+    // 2. try netlink
+    #[cfg(feature = "netlink")]
+    {
+        let netlink = AsyncNetlinkBackend::new()?;
+        netlink.waitpid_async(pid).await?;
     }
 
     Ok(())

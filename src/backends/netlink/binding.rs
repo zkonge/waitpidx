@@ -1,15 +1,20 @@
-use std::{ffi::c_int, mem::size_of};
+use std::mem::size_of;
 
 pub(super) use linux_raw_sys::netlink::{nlmsghdr, NLMSG_DONE};
 
 use crate::utils::incomplete_array::IncompleteArray;
 
+pub(super) const NLMSGHDR_SIZE: usize = size_of::<nlmsghdr>();
+pub(super) const CN_MSG_SIZE: usize = size_of::<cn_msg>();
+pub(super) const MCAST_OP_SIZE: usize = size_of::<proc_cn_mcast_op>();
+pub(super) const PROC_EVENT_SIZE: usize = size_of::<proc_event>();
+
+pub(super) const NL_MESSAGE_BASE_SIZE: usize = NLMSGHDR_SIZE + CN_MSG_SIZE;
+pub(super) const NL_MESSAGE_MCAST_SIZE: usize = NL_MESSAGE_BASE_SIZE + MCAST_OP_SIZE;
+pub(super) const NL_CONNECTOR_MAX_MSG_SIZE: usize = 16384;
+
 pub(super) const CN_IDX_PROC: u32 = 0x1;
 pub(super) const CN_VAL_PROC: u32 = 0x1;
-
-pub(super) const NL_MESSAGE_SIZE: usize =
-    size_of::<nlmsghdr>() + size_of::<cn_msg>() + size_of::<c_int>();
-pub(super) const CONNECTOR_MAX_MSG_SIZE: usize = 16384;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -90,7 +95,7 @@ pub(super) struct proc_event {
     pub cpu: u32,
     /// Number of nano seconds since system boot
     pub timestamp_ns: u64,
-    // specially, exit_proc_event is the longest struct in proc_event union,
+    // specially, [`exit_proc_event`]` is the longest struct in proc_event union,
     // so it's safe to use it as the type of event_data
     pub event_data: exit_proc_event, /* must be last field of proc_event struct */
 }
