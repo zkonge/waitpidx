@@ -31,6 +31,7 @@ pub fn waitpid(pid: u32, timeout: Option<Duration>) -> io::Result<()> {
 }
 
 #[cfg(feature = "async")]
+#[allow(unreachable_code)]
 pub async fn waitpid_async(pid: u32) -> io::Result<()> {
     let pid = Pid::from_raw(pid as i32).ok_or(io::ErrorKind::InvalidInput)?;
 
