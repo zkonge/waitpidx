@@ -14,13 +14,13 @@ use rustix::{
 use super::{binding::NL_CONNECTOR_MAX_MSG_SIZE, connection::NetlinkConnection};
 use crate::{backends::AsyncBackend, utils};
 
-type ExitNotifierAsync = tokio::sync::oneshot::Sender<()>;
-type ExitReceiverAsync = tokio::sync::oneshot::Receiver<()>;
+type AsyncExitNotifier = tokio::sync::oneshot::Sender<()>;
+type AsyncExitReceiver = tokio::sync::oneshot::Receiver<()>;
 
 #[derive(Debug)]
 struct AsyncNetlinkBackendInner {
     netlink: NetlinkConnection,
-    interest: tokio::sync::Mutex<HashMap<Pid, Vec<ExitNotifierAsync>>>,
+    interest: tokio::sync::Mutex<HashMap<Pid, Vec<AsyncExitNotifier>>>,
 }
 
 impl AsyncNetlinkBackendInner {
@@ -48,7 +48,7 @@ impl AsyncNetlinkBackendInner {
         Ok(ret)
     }
 
-    async fn interest(&self, pid: Pid) -> Result<ExitReceiverAsync> {
+    async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
         let mut interest_group = self.interest.lock().await;
 
         let keys = interest_group
@@ -94,7 +94,7 @@ impl AsyncNetlinkBackend {
         Ok(Self(AsyncNetlinkBackendInner::new()?))
     }
 
-    pub async fn interest(&self, pid: Pid) -> Result<ExitReceiverAsync> {
+    pub async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
         self.0.interest(pid).await
     }
 }
