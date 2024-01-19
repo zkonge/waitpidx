@@ -19,7 +19,8 @@ use super::binding::{
 // cBPF modified from https://github.com/Parrot-Developers/fusion/blob/master/pidwatch/src/pidwatch.c
 // with BSD-3-Clause license
 fn assembly_filter(pids: &[Pid]) -> Vec<BPFFilter> {
-    let mut filter = Vec::with_capacity(15 /* head */ + 1 /* tail */ + 3 /* pid asm */ * pids.len());
+    let mut filter =
+        Vec::with_capacity(15 /* head */ + 1 /* tail */ + 3 /* pid asm */ * pids.len());
 
     filter.extend([
         /* check message's type is NLMSG_DONE */
