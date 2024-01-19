@@ -9,7 +9,8 @@ use std::{
 };
 
 use rustix::{
-    fd::{AsFd, AsRawFd},
+    fd::{AsFd, BorrowedFd, OwnedFd},
+    pipe::{self, PipeFlags},
     process::Pid,
 };
 
@@ -31,23 +32,10 @@ impl NetlinkBackendInner {
         netlink.interest(Some(&[]))?;
         netlink.start()?;
 
-        let ret = Arc::new(Self {
+        Ok(Arc::new(Self {
             netlink,
             interest: Default::default(),
-        });
-
-        thread::spawn({
-            let ret = ret.clone();
-            move || {
-                match ret.handle_events() {
-                    Ok(_) => { /* connection closed */ }
-                    Err(e) if e.raw_os_error() == Some(libc::EBADF) => { /* connection closed */ }
-                    Err(e) => panic!("{e:?}"),
-                }
-            }
-        });
-
-        Ok(ret)
+        }))
     }
 
     fn interest(&self, pid: Pid) -> Result<ExitReceiver> {
@@ -66,11 +54,11 @@ impl NetlinkBackendInner {
         Ok(rx)
     }
 
-    fn handle_events(&self) -> Result<()> {
+    fn handle_events(&self, timeout: Option<Duration>, aborter: BorrowedFd) -> Result<()> {
         let mut buf = [0u8; NL_CONNECTOR_MAX_MSG_SIZE];
 
         loop {
-            let pid = self.netlink.read_event(&mut buf, None)?;
+            let pid = self.netlink.read_event(&mut buf, timeout, aborter)?;
 
             let mut interest_group = self.interest.lock().unwrap();
             if let Some(notifiers) = interest_group.remove(&pid) {
@@ -89,22 +77,41 @@ impl NetlinkBackendInner {
 }
 
 #[derive(Debug)]
-pub struct NetlinkBackend(Arc<NetlinkBackendInner>);
+pub struct NetlinkBackend {
+    inner: Arc<NetlinkBackendInner>,
+    aborter: OwnedFd,
+}
 
 impl NetlinkBackend {
     pub fn new() -> Result<Self> {
-        Ok(Self(NetlinkBackendInner::new()?))
+        let inner = NetlinkBackendInner::new()?;
+        let (rx, tx) = pipe::pipe_with(PipeFlags::DIRECT | PipeFlags::CLOEXEC)?;
+
+        thread::spawn({
+            let inner = inner.clone();
+            move || {
+                match inner.handle_events(None, rx.as_fd()) {
+                    Ok(_) => { /* connection closed */ }
+                    Err(e) if e.kind() == ErrorKind::ConnectionAborted => {
+                        /* connection closed */
+                    }
+                    Err(e) => panic!("{e:?}"),
+                }
+            }
+        });
+
+        Ok(Self { inner, aborter: tx })
     }
 
     pub fn interest(&self, pid: Pid) -> Result<ExitReceiver> {
-        self.0.interest(pid)
+        self.inner.interest(pid)
     }
 }
 
 impl Drop for NetlinkBackend {
     fn drop(&mut self) {
-        let _ = self.0.netlink.stop();
-        unsafe { rustix::io::close(self.0.netlink.as_fd().as_raw_fd()) }
+        let _ = self.inner.netlink.stop();
+        let _ = rustix::io::write(self.aborter.as_fd(), &[0u8]).unwrap();
     }
 }
 

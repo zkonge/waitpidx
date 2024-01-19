@@ -84,15 +84,38 @@ impl NetlinkConnection {
         &self,
         buf: &mut [u8; NL_CONNECTOR_MAX_MSG_SIZE],
         timeout: Option<Duration>,
+        aborter_fd: BorrowedFd,
     ) -> Result<Pid> {
-        let n = match timeout {
-            Some(timeout) => read_with_timeout(self.fd.as_fd(), buf, timeout)?,
-            None => net::recv(&self.fd, buf, RecvFlags::empty())?, // infinity
+        let timeout = match timeout {
+            Some(timeout) => timeout.as_millis().try_into().unwrap_or(i32::MAX),
+            None => -1,
         };
+
+        let n = {
+            let nl_fd = self.fd.as_fd();
+
+            let mut fds = [
+                event::PollFd::new(&nl_fd, event::PollFlags::IN),
+                event::PollFd::new(&aborter_fd, event::PollFlags::IN),
+            ];
+
+            let poll_result = event::poll(&mut fds, timeout)?;
+
+            if poll_result == 0 {
+                return Err(ErrorKind::TimedOut.into());
+            } else if fds[1].revents().contains(event::PollFlags::IN) {
+                return Err(ErrorKind::ConnectionAborted.into());
+            }
+
+            // then netlink fd must be readable
+            net::recv(nl_fd, buf, RecvFlags::empty())?
+        };
+
         if n == 0 {
             return Err(ErrorKind::UnexpectedEof.into());
         }
 
+        // TODO: erase dirty data in buf
         parse_netlink_event_message(buf).ok_or(ErrorKind::InvalidData.into())
     }
 
@@ -130,18 +153,6 @@ impl AsFd for NetlinkConnection {
     fn as_fd(&self) -> BorrowedFd {
         self.fd.as_fd()
     }
-}
-
-fn read_with_timeout(fd: BorrowedFd, buf: &mut [u8], timeout: Duration) -> Result<usize> {
-    let timeout = timeout.as_millis().try_into().unwrap_or(i32::MAX);
-
-    let mut fds = [event::PollFd::new(&fd, event::PollFlags::IN)];
-
-    if event::poll(&mut fds, timeout)? == 0 {
-        return Err(ErrorKind::TimedOut.into());
-    }
-
-    net::recv(fd, buf, RecvFlags::empty()).map_err(Into::into)
 }
 
 fn make_netlink_control_message(control_op: proc_cn_mcast_op) -> [u8; NL_MESSAGE_MCAST_SIZE] {
