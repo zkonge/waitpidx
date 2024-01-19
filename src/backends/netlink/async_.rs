@@ -6,10 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use rustix::{
-    fd::{AsFd, AsRawFd},
-    process::Pid,
-};
+use rustix::process::Pid;
 
 use super::{binding::NL_CONNECTOR_MAX_MSG_SIZE, connection::NetlinkConnection};
 use crate::{backends::AsyncBackend, utils};
@@ -29,23 +26,10 @@ impl AsyncNetlinkBackendInner {
         netlink.interest(Some(&[]))?;
         netlink.start()?;
 
-        let ret = Arc::new(Self {
+        Ok(Arc::new(Self {
             netlink,
             interest: Default::default(),
-        });
-
-        tokio::spawn({
-            let ret = ret.clone();
-            async move {
-                match ret.handle_events().await {
-                    Ok(_) => { /* connection closed */ }
-                    Err(e) if e.raw_os_error() == Some(libc::EBADF) => { /* connection closed */ }
-                    Err(e) => panic!("{e:?}"),
-                }
-            }
-        });
-
-        Ok(ret)
+        }))
     }
 
     async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
@@ -87,22 +71,38 @@ impl AsyncNetlinkBackendInner {
 }
 
 #[derive(Debug)]
-pub struct AsyncNetlinkBackend(Arc<AsyncNetlinkBackendInner>);
+pub struct AsyncNetlinkBackend {
+    inner: Arc<AsyncNetlinkBackendInner>,
+    aborter: tokio::task::AbortHandle,
+}
 
 impl AsyncNetlinkBackend {
     pub fn new() -> Result<Self> {
-        Ok(Self(AsyncNetlinkBackendInner::new()?))
+        let inner = AsyncNetlinkBackendInner::new()?;
+
+        let h = tokio::spawn({
+            let inner = inner.clone();
+            async move {
+                match inner.handle_events().await {
+                    Ok(_) => { /* connection closed */ }
+                    Err(e) => panic!("{e:?}"),
+                }
+            }
+        });
+        let aborter = h.abort_handle();
+
+        Ok(Self { inner, aborter })
     }
 
     pub async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
-        self.0.interest(pid).await
+        self.inner.interest(pid).await
     }
 }
 
 impl Drop for AsyncNetlinkBackend {
     fn drop(&mut self) {
-        let _ = self.0.netlink.stop();
-        unsafe { rustix::io::close(self.0.netlink.as_fd().as_raw_fd()) }
+        let _ = self.inner.netlink.stop();
+        self.aborter.abort();
     }
 }
 
