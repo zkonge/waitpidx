@@ -43,7 +43,7 @@ impl NetlinkConnection {
         let bind_ret = unsafe {
             libc::bind(
                 fd.as_raw_fd(),
-                addr_of!(sa_nl) as *const sockaddr,
+                addr_of!(sa_nl).cast::<sockaddr>(),
                 size_of::<netlink::sockaddr_nl>() as _,
             )
         };
@@ -163,7 +163,7 @@ fn make_netlink_control_message(control_op: proc_cn_mcast_op) -> [u8; NL_MESSAGE
 
     // headers
     {
-        let nlh_ptr = buf.as_mut_ptr() as *mut netlink::nlmsghdr;
+        let nlh_ptr = buf.as_mut_ptr().cast::<netlink::nlmsghdr>();
 
         // SAFETY: nlh_ptr is a valid pointer to a netlink::nlmsghdr
         // and it's length is known and suitable for writing
@@ -181,7 +181,7 @@ fn make_netlink_control_message(control_op: proc_cn_mcast_op) -> [u8; NL_MESSAGE
     // msg
     {
         // SAFETY: structure layout is known and suitable for writing, no overflow
-        let msg_ptr = unsafe { buf.as_mut_ptr().add(NLMSGHDR_SIZE) } as *mut cn_msg;
+        let msg_ptr = unsafe { buf.as_mut_ptr().add(NLMSGHDR_SIZE) }.cast::<cn_msg>();
 
         // SAFETY: msg_ptr is a valid pointer to a cn_msg
         // and it's length is known and suitable for writing
@@ -196,15 +196,15 @@ fn make_netlink_control_message(control_op: proc_cn_mcast_op) -> [u8; NL_MESSAGE
                 len: MCAST_OP_SIZE as u16,
                 flags: 0,
                 data: IncompleteArray::new(),
-            })
-        };
+            });
+        }
     }
 
     // msg data
     {
         // SAFETY: structure layout is known and suitable for writing, no overflow
         let data_ptr =
-            unsafe { buf.as_mut_ptr().add(NL_MESSAGE_BASE_SIZE) } as *mut proc_cn_mcast_op;
+            unsafe { buf.as_mut_ptr().add(NL_MESSAGE_BASE_SIZE) }.cast::<proc_cn_mcast_op>();
 
         // SAFETY: data_ptr is a valid pointer to a c_int
         unsafe { data_ptr.write_unaligned(control_op as proc_cn_mcast_op) };
@@ -217,11 +217,12 @@ fn parse_netlink_event_message(buf: &[u8; NL_CONNECTOR_MAX_MSG_SIZE]) -> Option<
     let nlh_ptr = buf.as_ptr();
     // SAFETY: structure layout is known and suitable for writing, no overflow
     let cn_msg_ptr = unsafe { nlh_ptr.add(NLMSGHDR_SIZE) };
+    // SAFETY: structure layout is known and suitable for writing, no overflow
     let proc_event_ptr = unsafe { cn_msg_ptr.add(CN_MSG_SIZE) };
 
     // SAFETY: nlh_ptr is a valid pointer to a nlmsghdr
     // and it's length is known and suitable for reading
-    let nlh = unsafe { (nlh_ptr as *const nlmsghdr).read_unaligned() };
+    let nlh = unsafe { nlh_ptr.cast::<nlmsghdr>().read_unaligned() };
     // // do we need to check nlh.nlmsg_type == NLMSG_ERROR and return Result?
     // if nlh.nlmsg_type == NLMSG_ERROR as u16 {
     //     return Ok(());
@@ -232,7 +233,7 @@ fn parse_netlink_event_message(buf: &[u8; NL_CONNECTOR_MAX_MSG_SIZE]) -> Option<
 
     // SAFETY: cn_msg_ptr is a valid pointer to a cn_msg
     // and it's length is known and suitable for reading
-    let cn_msg = unsafe { (cn_msg_ptr as *const cn_msg).read_unaligned() };
+    let cn_msg = unsafe { cn_msg_ptr.cast::<cn_msg>().read_unaligned() };
     if cn_msg.len as usize != PROC_EVENT_SIZE {
         return None;
     }
@@ -240,7 +241,7 @@ fn parse_netlink_event_message(buf: &[u8; NL_CONNECTOR_MAX_MSG_SIZE]) -> Option<
     // SAFETY: event is a valid pointer to a proc_event
     // and it's length is known and suitable for reading
     // DO NOT read cn_msg.data, it's not a valid stack array after copy
-    let proc_event = unsafe { (proc_event_ptr as *const proc_event).read_unaligned() };
+    let proc_event = unsafe { proc_event_ptr.cast::<proc_event>().read_unaligned() };
     if !matches!(proc_event.what, proc_cn_event::PROC_EVENT_EXIT) {
         return None;
     }

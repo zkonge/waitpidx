@@ -63,7 +63,7 @@ impl AsyncNetlinkBackendInner {
 
             let keys = interest_group.keys().copied().collect::<Vec<_>>();
             match self.netlink.interest(Some(&keys)) {
-                Ok(_) => (),
+                Ok(()) => (),
                 Err(_) => return Ok(()), // OwnedFd is dropped
             }
         }
@@ -84,7 +84,7 @@ impl AsyncNetlinkBackend {
             let inner = inner.clone();
             async move {
                 match inner.handle_events().await {
-                    Ok(_) => { /* connection closed */ }
+                    Ok(()) => { /* connection closed */ }
                     Err(e) => panic!("{e:?}"),
                 }
             }
@@ -114,7 +114,7 @@ impl AsyncBackend for AsyncNetlinkBackend {
 
         let rx = self.interest(pid).await?;
         match rx.await {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(_) => Err(ErrorKind::BrokenPipe.into()),
         }
     }

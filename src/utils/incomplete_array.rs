@@ -12,10 +12,10 @@ pub struct IncompleteArray<T>(PhantomData<T>, [T; 0]);
 impl<T> IncompleteArray<T> {
     #[inline]
     pub const fn new() -> Self {
-        IncompleteArray(PhantomData, [])
+        Self(PhantomData, [])
     }
     #[inline]
-    pub fn as_ptr(&self) -> *const T {
+    pub const fn as_ptr(&self) -> *const T {
         self as *const _ as *const T
     }
     #[inline]
@@ -23,7 +23,7 @@ impl<T> IncompleteArray<T> {
         self as *mut _ as *mut T
     }
     #[inline]
-    pub unsafe fn as_slice(&self, len: usize) -> &[T] {
+    pub const unsafe fn as_slice(&self, len: usize) -> &[T] {
         slice::from_raw_parts(self.as_ptr(), len)
     }
     #[inline]

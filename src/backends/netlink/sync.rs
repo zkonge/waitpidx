@@ -69,7 +69,7 @@ impl NetlinkBackendInner {
 
             let keys = interest_group.keys().copied().collect::<Vec<_>>();
             match self.netlink.interest(Some(&keys)) {
-                Ok(_) => (),
+                Ok(()) => (),
                 Err(_) => return Ok(()), // OwnedFd is dropped
             }
         }
@@ -91,7 +91,7 @@ impl NetlinkBackend {
             let inner = inner.clone();
             move || {
                 match inner.handle_events(None, rx.as_fd()) {
-                    Ok(_) => { /* connection closed */ }
+                    Ok(()) => { /* connection closed */ }
                     Err(e) if e.kind() == ErrorKind::ConnectionAborted => {
                         /* connection closed */
                     }
@@ -111,7 +111,7 @@ impl NetlinkBackend {
 impl Drop for NetlinkBackend {
     fn drop(&mut self) {
         let _ = self.inner.netlink.stop();
-        let _ = rustix::io::write(self.aborter.as_fd(), &[0u8]).unwrap();
+        let _ = rustix::io::write(self.aborter.as_fd(), &[0u8]);
     }
 }
 
@@ -125,7 +125,7 @@ impl Backend for NetlinkBackend {
 
         match timeout {
             Some(timeout) => match rx.recv_timeout(timeout) {
-                Ok(_) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
                     Err(ErrorKind::TimedOut.into())
                 }
