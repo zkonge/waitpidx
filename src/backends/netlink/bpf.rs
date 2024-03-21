@@ -1,11 +1,10 @@
 use std::{
     io::{Error, Result},
-    mem::size_of,
+    mem::{offset_of, size_of},
 };
 
 use classic_bpf::*;
 use linux_raw_sys::netlink::NLMSG_DONE;
-use memoffset::offset_of;
 use rustix::{
     fd::{AsRawFd, BorrowedFd},
     process::Pid,
