@@ -1,8 +1,8 @@
+mod incomplete_array;
+
 use std::io::Error;
 
 use rustix::process::Pid;
-
-pub mod incomplete_array;
 
 #[must_use]
 pub fn process_exists(pid: Pid) -> bool {

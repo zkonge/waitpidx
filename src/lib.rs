@@ -4,7 +4,7 @@ mod utils;
 use std::{io, time::Duration};
 
 use backends::*;
-use rustix::process::Pid;
+pub use rustix::process::Pid;
 
 pub use crate::{backends::pidfd, utils::process_exists};
 

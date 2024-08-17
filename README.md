@@ -36,10 +36,13 @@ async fn main() {
 
 # Feature
 
+Default features:
+
++ `async`
+
 Following features are disabled by default:
 
 + `netlink`
-+ `async`
 
 # Advanced Usage
 
