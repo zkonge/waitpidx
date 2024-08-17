@@ -1,6 +1,6 @@
 #[cfg(feature = "netlink")]
-mod netlink;
-mod pidfd;
+pub mod netlink;
+pub mod pidfd;
 
 use std::{io, time::Duration};
 
@@ -17,5 +17,5 @@ pub(crate) trait Backend {
 
 #[cfg(feature = "async")]
 pub(crate) trait AsyncBackend {
-    async fn waitpid_async(&self, pid: Pid) -> io::Result<()>;
+    async fn waitpid(&self, pid: Pid) -> io::Result<()>;
 }

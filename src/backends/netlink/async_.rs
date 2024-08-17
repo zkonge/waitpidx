@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     io::{Error, ErrorKind, Result},
     iter,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use rustix::process::Pid;
@@ -17,7 +17,7 @@ type AsyncExitReceiver = tokio::sync::oneshot::Receiver<()>;
 #[derive(Debug)]
 struct AsyncNetlinkBackendInner {
     netlink: NetlinkConnection,
-    interest: tokio::sync::Mutex<HashMap<Pid, Vec<AsyncExitNotifier>>>,
+    interest: Mutex<HashMap<Pid, Vec<AsyncExitNotifier>>>,
 }
 
 impl AsyncNetlinkBackendInner {
@@ -33,7 +33,7 @@ impl AsyncNetlinkBackendInner {
     }
 
     async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
-        let mut interest_group = self.interest.lock().await;
+        let mut interest_group = self.interest.lock().unwrap_or_else(|x| x.into_inner());
 
         let keys = interest_group
             .keys()
@@ -54,7 +54,7 @@ impl AsyncNetlinkBackendInner {
         loop {
             let pid = self.netlink.read_event_async(&mut buf).await?;
 
-            let mut interest_group = self.interest.lock().await;
+            let mut interest_group = self.interest.lock().unwrap_or_else(|x| x.into_inner());
             if let Some(notifiers) = interest_group.remove(&pid) {
                 for notifier in notifiers {
                     let _ = notifier.send(()); // don't care if the receiver is dropped
@@ -107,7 +107,7 @@ impl Drop for AsyncNetlinkBackend {
 }
 
 impl AsyncBackend for AsyncNetlinkBackend {
-    async fn waitpid_async(&self, pid: Pid) -> Result<()> {
+    async fn waitpid(&self, pid: Pid) -> Result<()> {
         if !utils::process_exists(pid) {
             return Err(Error::from_raw_os_error(libc::ESRCH));
         }

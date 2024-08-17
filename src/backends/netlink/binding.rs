@@ -95,7 +95,7 @@ pub(super) struct proc_event {
     pub cpu: u32,
     /// Number of nano seconds since system boot
     pub timestamp_ns: u64,
-    // specially, [`exit_proc_event`]` is the longest struct in proc_event union,
+    // specially, [`exit_proc_event`] is the longest struct in proc_event union,
     // so it's safe to use it as the type of event_data
     pub event_data: exit_proc_event, /* must be last field of proc_event struct */
 }

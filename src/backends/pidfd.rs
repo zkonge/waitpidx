@@ -1,3 +1,7 @@
+#[cfg(feature = "async")]
+mod async_fd;
+mod sync_fd;
+
 use std::{
     io::{self, Error, ErrorKind},
     time::Duration,
@@ -8,10 +12,13 @@ use rustix::{
     process::{pidfd_open, Pid, PidfdFlags},
 };
 
+#[cfg(feature = "async")]
+pub use self::async_fd::{AsyncPidFd, AsyncPidFdExited, AsyncPidFdWait};
+pub use self::sync_fd::PidFd;
 use super::Backend;
 
 #[derive(Debug)]
-pub struct PidFdBackend;
+pub(crate) struct PidFdBackend;
 
 impl Backend for PidFdBackend {
     fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> io::Result<()> {
@@ -32,11 +39,7 @@ impl Backend for PidFdBackend {
 
 #[cfg(feature = "async")]
 impl super::AsyncBackend for PidFdBackend {
-    async fn waitpid_async(&self, pid: Pid) -> io::Result<()> {
-        let fd = pidfd_open(pid, PidfdFlags::empty())?;
-
-        let _ = tokio::io::unix::AsyncFd::new(fd)?.readable().await?;
-
-        Ok(())
+    async fn waitpid(&self, pid: Pid) -> io::Result<()> {
+        AsyncPidFd::new(pid)?.await
     }
 }
