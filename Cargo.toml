@@ -14,22 +14,26 @@ classic_bpf = { version = "0.1.1", optional = true }
 crossbeam-channel = { version = "0.5.11", optional = true }
 libc = "0.2"
 linux-raw-sys = { version = "0.6.3", features = ["netlink"], optional = true }
-rustix = { version = "0.38.30", features = ["event", "process", "net", "pipe"] }
-tokio = { version = "1.35.1", features = [
-    "net",
-    "rt",
-    "sync",
-], optional = true }
+rustix = { version = "0.38.30", features = ["event", "process"] }
+tokio = { version = "1.39.3", features = ["net"], optional = true }
 
 [dev-dependencies]
+tokio = { version = "1.39.3", features = ["rt"] }
 futures-util = { version = "0.3.30", default-features = false, features = [
     "alloc",
 ] }
 
 [features]
 default = ["async"]
-netlink = ["dep:classic_bpf", "dep:crossbeam-channel", "dep:linux-raw-sys"]
 async = ["dep:tokio"]
+netlink = [
+    "dep:classic_bpf",
+    "dep:crossbeam-channel",
+    "dep:linux-raw-sys",
+    "rustix/pipe",
+    "rustix/net",
+]
+async-netlink = ["async", "netlink", "tokio/rt", "tokio/sync"]
 
 [[example]]
 name = "waitpid_async"

@@ -121,7 +121,7 @@ impl NetlinkConnection {
 
     // WARNING: multiple reader in the same time may cause unwanted behavior.
     // current polling implementation is atomic, althrough it's thread-safe in Rust semantics,
-    #[cfg(feature = "async")]
+    #[cfg(feature = "async-netlink")]
     pub(super) async fn read_event_async(
         &self,
         buf: &mut [u8; NL_CONNECTOR_MAX_MSG_SIZE],

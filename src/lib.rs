@@ -40,13 +40,13 @@ pub async fn waitpid_async(pid: u32) -> Result<()> {
     // 1. try pidfd
     match AsyncBackend::waitpid(&pidfd::PidFdBackend, pid).await {
         // kernel 5.2- doesn't support pidfd_open, try netlink
-        #[cfg(feature = "netlink")]
+        #[cfg(feature = "async-netlink")]
         Err(e) if e.kind() == ErrorKind::Unsupported => (),
         r => return r,
     }
 
     // 2. try netlink
-    #[cfg(feature = "netlink")]
+    #[cfg(feature = "async-netlink")]
     netlink::AsyncNetlinkBackend::new()?.waitpid(pid).await?;
 
     Ok(())
