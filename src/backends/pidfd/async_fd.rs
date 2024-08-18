@@ -1,49 +1,33 @@
 use std::{
     future::Future,
-    io,
+    io::Result,
     os::fd::OwnedFd,
     pin::Pin,
-    sync::atomic::{AtomicBool, Ordering},
     task::{Context, Poll},
 };
 
 use rustix::process::{pidfd_open, Pid, PidfdFlags};
 use tokio::io::{unix::AsyncFd, Interest};
 
-struct MaybeExitedPidFd {
-    fd: AsyncFd<OwnedFd>,
-    exited: AtomicBool,
-}
+#[derive(Debug)]
+struct PidFdInner(AsyncFd<OwnedFd>);
 
-impl MaybeExitedPidFd {
-    fn new(pid: Pid) -> io::Result<Self> {
-        Ok(Self {
-            fd: AsyncFd::with_interest(pidfd_open(pid, PidfdFlags::empty())?, Interest::READABLE)?,
-            exited: false.into(),
-        })
+impl PidFdInner {
+    fn new(pid: Pid) -> Result<Self> {
+        AsyncFd::with_interest(pidfd_open(pid, PidfdFlags::empty())?, Interest::READABLE).map(Self)
     }
 
-    fn poll_exit(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if self.exited.load(Ordering::Acquire) {
-            return Poll::Ready(Ok(()));
-        }
-
-        let r = self.fd.poll_read_ready(cx).map_ok(|_| ());
-
-        if let Poll::Ready(Ok(_)) = r {
-            self.exited.store(true, Ordering::Release);
-        }
-
-        r
+    fn poll_exit(&self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.0.poll_read_ready(cx).map_ok(|_| ())
     }
 }
 
 pub struct AsyncPidFdWait<'a> {
-    pidfd: &'a MaybeExitedPidFd,
+    pidfd: &'a PidFdInner,
 }
 
 impl Future for AsyncPidFdWait<'_> {
-    type Output = io::Result<()>;
+    type Output = Result<()>;
 
     #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -52,11 +36,11 @@ impl Future for AsyncPidFdWait<'_> {
 }
 
 pub struct AsyncPidFdExited<'a> {
-    pidfd: &'a MaybeExitedPidFd,
+    pidfd: &'a PidFdInner,
 }
 
 impl Future for AsyncPidFdExited<'_> {
-    type Output = io::Result<bool>;
+    type Output = Result<bool>;
 
     #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -67,12 +51,13 @@ impl Future for AsyncPidFdExited<'_> {
     }
 }
 
-pub struct AsyncPidFd(MaybeExitedPidFd);
+#[derive(Debug)]
+pub struct AsyncPidFd(PidFdInner);
 
 impl AsyncPidFd {
     #[inline]
-    pub fn new(pid: Pid) -> io::Result<Self> {
-        MaybeExitedPidFd::new(pid).map(Self)
+    pub fn new(pid: Pid) -> Result<Self> {
+        PidFdInner::new(pid).map(Self)
     }
 
     #[inline]
@@ -87,7 +72,7 @@ impl AsyncPidFd {
 }
 
 impl Future for AsyncPidFd {
-    type Output = io::Result<()>;
+    type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.0.poll_exit(cx)

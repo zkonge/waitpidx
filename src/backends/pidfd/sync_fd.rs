@@ -1,7 +1,6 @@
 use std::{
-    io::{self, Error, ErrorKind},
+    io::{Error, ErrorKind, Result},
     os::fd::OwnedFd,
-    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -10,41 +9,30 @@ use rustix::{
     process::{pidfd_open, Pid, PidfdFlags},
 };
 
-struct MaybeExitedPidFd {
-    fd: OwnedFd,
-    exited: AtomicBool,
-}
+struct PidFdInner(OwnedFd);
 
-impl MaybeExitedPidFd {
-    fn new(pid: Pid) -> io::Result<Self> {
-        Ok(Self {
-            fd: pidfd_open(pid, PidfdFlags::empty())?,
-            exited: false.into(),
-        })
+impl PidFdInner {
+    fn new(pid: Pid) -> Result<Self> {
+        pidfd_open(pid, PidfdFlags::empty())
+            .map(Self)
+            .map_err(Into::into)
     }
 
-    fn waitpid(&self, timeout: Option<Duration>) -> io::Result<()> {
-        if self.exited.load(Ordering::Acquire) {
-            return Ok(());
-        };
-
+    fn waitpid(&self, timeout: Option<Duration>) -> Result<()> {
         let timeout = match timeout {
             Some(dur) => dur.as_millis().try_into().unwrap_or(i32::MAX),
             None => -1, // infinity
         };
 
-        let mut fds = [PollFd::new(&self.fd, PollFlags::IN)];
+        let mut fds = [PollFd::new(&self.0, PollFlags::IN)];
         match poll(&mut fds, timeout)? {
             0 => Err(Error::from(ErrorKind::TimedOut)),
-            _ => {
-                self.exited.store(true, Ordering::Release);
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 
     #[inline]
-    fn is_exited(&self) -> io::Result<bool> {
+    fn is_exited(&self) -> Result<bool> {
         match self.waitpid(Some(Duration::ZERO)) {
             Ok(_) => Ok(true),
             Err(e) if e.kind() == ErrorKind::TimedOut => Ok(false),
@@ -53,20 +41,20 @@ impl MaybeExitedPidFd {
     }
 }
 
-pub struct PidFd(MaybeExitedPidFd);
+pub struct PidFd(PidFdInner);
 
 impl PidFd {
-    pub fn new(pid: Pid) -> io::Result<Self> {
-        MaybeExitedPidFd::new(pid).map(Self)
+    pub fn new(pid: Pid) -> Result<Self> {
+        PidFdInner::new(pid).map(Self)
     }
 
     #[inline]
-    pub fn wait(&self, timeout: Option<Duration>) -> io::Result<()> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<()> {
         self.0.waitpid(timeout)
     }
 
     #[inline]
-    pub fn is_exited(&self) -> io::Result<bool> {
+    pub fn is_exited(&self) -> Result<bool> {
         self.0.is_exited()
     }
 }
