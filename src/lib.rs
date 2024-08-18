@@ -1,48 +1,53 @@
 mod backends;
 mod utils;
 
-use std::{io, time::Duration};
+use std::{
+    io::{ErrorKind, Result},
+    time::Duration,
+};
 
-use backends::*;
 pub use rustix::process::Pid;
 
+use crate::backends::*;
 pub use crate::{backends::pidfd, utils::process_exists};
 
 #[allow(unreachable_code)] // while netlink feature disabled
-pub fn waitpid(pid: u32, timeout: Option<Duration>) -> io::Result<()> {
-    let pid = Pid::from_raw(pid as i32).ok_or(io::ErrorKind::InvalidInput)?;
+pub fn waitpid(pid: u32, timeout: Option<Duration>) -> Result<()> {
+    let pid = Pid::from_raw(pid as i32).ok_or(ErrorKind::InvalidInput)?;
 
     // 1. try pidfd
-    match Backend::waitpid(&PidFdBackend, pid, timeout) {
+    match Backend::waitpid(&pidfd::PidFdBackend, pid, timeout) {
         // kernel 5.2- doesn't support pidfd_open, try netlink
         #[cfg(feature = "netlink")]
-        Err(e) if e.kind() == io::ErrorKind::Unsupported => (),
+        Err(e) if e.kind() == ErrorKind::Unsupported => (),
         r => return r,
     }
 
     // 2. try netlink
     #[cfg(feature = "netlink")]
-    NetlinkBackend::new()?.waitpid(pid, timeout)?;
+    netlink::NetlinkBackend::new()?.waitpid(pid, timeout)?;
 
     Ok(())
 }
 
 #[cfg(feature = "async")]
 #[allow(unreachable_code)]
-pub async fn waitpid_async(pid: u32) -> io::Result<()> {
-    let pid = Pid::from_raw(pid as i32).ok_or(io::ErrorKind::InvalidInput)?;
+pub async fn waitpid_async(pid: u32) -> Result<()> {
+    use backends::AsyncBackend;
+
+    let pid = Pid::from_raw(pid as i32).ok_or(ErrorKind::InvalidInput)?;
 
     // 1. try pidfd
-    match AsyncBackend::waitpid(&PidFdBackend, pid).await {
+    match AsyncBackend::waitpid(&pidfd::PidFdBackend, pid).await {
         // kernel 5.2- doesn't support pidfd_open, try netlink
         #[cfg(feature = "netlink")]
-        Err(e) if e.kind() == io::ErrorKind::Unsupported => (),
+        Err(e) if e.kind() == ErrorKind::Unsupported => (),
         r => return r,
     }
 
     // 2. try netlink
     #[cfg(feature = "netlink")]
-    AsyncNetlinkBackend::new()?.waitpid(pid).await?;
+    netlink::AsyncNetlinkBackend::new()?.waitpid(pid).await?;
 
     Ok(())
 }

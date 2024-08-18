@@ -22,7 +22,9 @@ tokio = { version = "1.35.1", features = [
 ], optional = true }
 
 [dev-dependencies]
-futures-util = { version = "0.3.30", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3.30", default-features = false, features = [
+    "alloc",
+] }
 
 [features]
 default = ["async"]
@@ -31,6 +33,10 @@ async = ["dep:tokio"]
 
 [[example]]
 name = "waitpid_async"
+required-features = ["async"]
+
+[[example]]
+name = "waitpid_many_async"
 required-features = ["async"]
 
 [[example]]

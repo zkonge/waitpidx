@@ -3,7 +3,7 @@ mod async_fd;
 mod sync_fd;
 
 use std::{
-    io::{self, Error, ErrorKind},
+    io::{Error, ErrorKind, Result},
     time::Duration,
 };
 
@@ -21,7 +21,7 @@ use super::Backend;
 pub(crate) struct PidFdBackend;
 
 impl Backend for PidFdBackend {
-    fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> io::Result<()> {
+    fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> Result<()> {
         let fd = pidfd_open(pid, PidfdFlags::empty())?;
         let timeout = match timeout {
             Some(dur) => dur.as_millis().try_into().unwrap_or(i32::MAX),
@@ -39,7 +39,7 @@ impl Backend for PidFdBackend {
 
 #[cfg(feature = "async")]
 impl super::AsyncBackend for PidFdBackend {
-    async fn waitpid(&self, pid: Pid) -> io::Result<()> {
+    async fn waitpid(&self, pid: Pid) -> Result<()> {
         AsyncPidFd::new(pid)?.await
     }
 }

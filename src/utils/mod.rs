@@ -1,4 +1,4 @@
-mod incomplete_array;
+pub(crate) mod incomplete_array;
 
 use std::io::Error;
 

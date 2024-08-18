@@ -2,20 +2,15 @@
 pub mod netlink;
 pub mod pidfd;
 
-use std::{io, time::Duration};
+use std::{io::Result, time::Duration};
 
-#[cfg(all(feature = "netlink", feature = "async"))]
-pub(crate) use netlink::AsyncNetlinkBackend;
-#[cfg(feature = "netlink")]
-pub(crate) use netlink::NetlinkBackend;
-pub(crate) use pidfd::PidFdBackend;
 use rustix::process::Pid;
 
 pub(crate) trait Backend {
-    fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> io::Result<()>;
+    fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> Result<()>;
 }
 
 #[cfg(feature = "async")]
 pub(crate) trait AsyncBackend {
-    async fn waitpid(&self, pid: Pid) -> io::Result<()>;
+    async fn waitpid(&self, pid: Pid) -> Result<()>;
 }

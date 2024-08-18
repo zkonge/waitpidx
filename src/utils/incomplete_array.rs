@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 use std::{
-    fmt::{self, Debug, Formatter},
+    fmt::{Debug, Formatter, Result as FmtResult},
     marker::PhantomData,
     slice,
 };
 
 #[repr(C)]
 #[derive(Default)]
-pub struct IncompleteArray<T>(PhantomData<T>, [T; 0]);
+pub(crate) struct IncompleteArray<T>(PhantomData<T>, [T; 0]);
 
 impl<T> IncompleteArray<T> {
     #[inline]
@@ -33,7 +33,7 @@ impl<T> IncompleteArray<T> {
 }
 
 impl<T> Debug for IncompleteArray<T> {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> FmtResult {
         fmt.debug_struct("IncompleteArray").finish_non_exhaustive()
     }
 }
