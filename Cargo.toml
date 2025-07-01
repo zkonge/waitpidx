@@ -10,11 +10,11 @@ categories = ["os"]
 readme = "README.md"
 
 [dependencies]
+rustix = { version = "1.0.7", features = ["event", "process"] }
+
 classic_bpf = { version = "0.1.1", optional = true }
 crossbeam-channel = { version = "0.5.15", optional = true }
-libc = "0.2.174"
 linux-raw-sys = { version = "0.9.4", features = ["netlink"], optional = true }
-rustix = { version = "1.0.7", features = ["event", "process"] }
 tokio = { version = "1.45.1", features = ["net"], optional = true }
 
 [dev-dependencies]
@@ -24,7 +24,7 @@ futures-util = { version = "0.3.31", default-features = false, features = [
 ] }
 
 [features]
-default = ["async","async-netlink"]
+default = ["async"]
 async = ["dep:tokio"]
 netlink = [
     "dep:classic_bpf",
