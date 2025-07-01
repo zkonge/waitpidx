@@ -9,6 +9,7 @@ use rustix::{
     process::{pidfd_open, Pid, PidfdFlags},
 };
 
+#[derive(Debug)]
 struct PidFdInner(OwnedFd);
 
 impl PidFdInner {
@@ -42,6 +43,7 @@ impl PidFdInner {
     }
 }
 
+#[derive(Debug)]
 pub struct PidFd(PidFdInner);
 
 impl PidFd {
