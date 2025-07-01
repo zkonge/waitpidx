@@ -6,5 +6,5 @@ mod connection;
 mod sync;
 
 #[cfg(feature = "async-netlink")]
-pub(crate) use async_::AsyncNetlinkBackend;
-pub(crate) use sync::NetlinkBackend;
+pub(crate) use self::async_::AsyncNetlinkBackend;
+pub(crate) use self::sync::NetlinkBackend;

@@ -1,17 +1,18 @@
 use std::{
-    io::{Error, ErrorKind, Result},
-    mem::size_of,
-    ptr::addr_of,
+    io::{ErrorKind, Result},
     time::Duration,
 };
 
-use libc::sockaddr;
 use linux_raw_sys::netlink;
 use rustix::{
-    event::{self, poll, Timespec},
-    fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
-    net::{self, netlink as rustix_netlink, AddressFamily, RecvFlags, SendFlags, SocketType},
-    process::{self, Pid},
+    event::{poll, PollFd, PollFlags, Timespec},
+    fd::{AsFd, BorrowedFd, OwnedFd},
+    net::{
+        bind,
+        netlink::{SocketAddrNetlink, CONNECTOR as PF_NETLINK_CONNECTOR},
+        recv, send, socket, AddressFamily, RecvFlags, SendFlags, SocketType,
+    },
+    process::{getpid, Pid},
 };
 
 use super::{binding::*, bpf};
@@ -24,33 +25,16 @@ pub(super) struct NetlinkConnection {
 
 impl NetlinkConnection {
     pub(super) fn new() -> Result<Self> {
-        let fd = net::socket(
+        let fd = socket(
             AddressFamily::NETLINK,
             SocketType::DGRAM,
-            Some(rustix_netlink::CONNECTOR),
+            Some(PF_NETLINK_CONNECTOR),
         )?;
 
-        let self_pid = process::getpid().as_raw_nonzero().get();
+        let self_pid = getpid().as_raw_nonzero().get();
+        let addr = SocketAddrNetlink::new(self_pid as u32, CN_IDX_PROC);
 
-        let sa_nl = netlink::sockaddr_nl {
-            nl_family: AddressFamily::NETLINK.as_raw(),
-            nl_pad: 0, // unspecified
-            nl_pid: self_pid as u32,
-            nl_groups: CN_IDX_PROC,
-        };
-
-        // SAFETY: sockaddr_nl can be safely passed as a valid sockaddr pointer
-        let bind_ret = unsafe {
-            libc::bind(
-                fd.as_raw_fd(),
-                addr_of!(sa_nl).cast::<sockaddr>(),
-                size_of::<netlink::sockaddr_nl>() as _,
-            )
-        };
-
-        if bind_ret == -1 {
-            return Err(Error::last_os_error());
-        }
+        bind(&fd, &addr)?;
 
         Ok(Self { fd })
     }
@@ -58,7 +42,7 @@ impl NetlinkConnection {
     pub(super) fn start(&self) -> Result<()> {
         let buf = make_netlink_control_message(proc_cn_mcast_op::PROC_CN_MCAST_LISTEN);
 
-        net::send(&self.fd, &buf, SendFlags::empty())?;
+        send(&self.fd, &buf, SendFlags::empty())?;
 
         Ok(())
     }
@@ -66,7 +50,7 @@ impl NetlinkConnection {
     pub(super) fn stop(&self) -> Result<()> {
         let buf = make_netlink_control_message(proc_cn_mcast_op::PROC_CN_MCAST_IGNORE);
 
-        net::send(&self.fd, &buf, SendFlags::empty())?;
+        send(&self.fd, &buf, SendFlags::empty())?;
 
         Ok(())
     }
@@ -95,20 +79,20 @@ impl NetlinkConnection {
             let nl_fd = self.fd.as_fd();
 
             let mut fds = [
-                event::PollFd::new(&nl_fd, event::PollFlags::IN),
-                event::PollFd::new(&aborter_fd, event::PollFlags::IN),
+                PollFd::new(&nl_fd, PollFlags::IN),
+                PollFd::new(&aborter_fd, PollFlags::IN),
             ];
 
             let poll_result = poll(&mut fds, timeout.as_ref())?;
 
             if poll_result == 0 {
                 return Err(ErrorKind::TimedOut.into());
-            } else if fds[1].revents().contains(event::PollFlags::IN) {
+            } else if fds[1].revents().contains(PollFlags::IN) {
                 return Err(ErrorKind::ConnectionAborted.into());
             }
 
             // then netlink fd must be readable
-            net::recv(nl_fd, &mut *buf, RecvFlags::empty())?
+            recv(nl_fd, &mut *buf, RecvFlags::empty())?
         };
 
         if n == 0 {
@@ -132,7 +116,7 @@ impl NetlinkConnection {
             let mut guard = fd.readable().await?;
 
             match guard.try_io(|inner| {
-                net::recv(inner.get_ref(), &mut *buf, RecvFlags::empty()).map_err(Into::into)
+                recv(inner.get_ref(), &mut *buf, RecvFlags::empty()).map_err(Into::into)
             }) {
                 Ok(Ok((_, n))) => {
                     if n == 0 {
@@ -150,13 +134,13 @@ impl NetlinkConnection {
 }
 
 impl AsFd for NetlinkConnection {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.fd.as_fd()
     }
 }
 
 fn make_netlink_control_message(control_op: proc_cn_mcast_op) -> [u8; NL_MESSAGE_MCAST_SIZE] {
-    let self_pid = process::getpid().as_raw_nonzero().get();
+    let self_pid = getpid().as_raw_nonzero().get();
 
     // send call needn't alignment, stack array is fine
     let mut buf = [0u8; NL_MESSAGE_MCAST_SIZE];

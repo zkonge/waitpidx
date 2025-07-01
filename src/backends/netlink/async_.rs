@@ -101,7 +101,7 @@ impl AsyncNetlinkBackend {
 
 impl Drop for AsyncNetlinkBackend {
     fn drop(&mut self) {
-        let _ = self.inner.netlink.stop();
+        _ = self.inner.netlink.stop();
         self.aborter.abort();
     }
 }

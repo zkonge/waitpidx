@@ -24,7 +24,7 @@ futures-util = { version = "0.3.31", default-features = false, features = [
 ] }
 
 [features]
-default = ["async"]
+default = ["async","async-netlink"]
 async = ["dep:tokio"]
 netlink = [
     "dep:classic_bpf",

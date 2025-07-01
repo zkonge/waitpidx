@@ -61,12 +61,12 @@ impl AsyncPidFd {
     }
 
     #[inline]
-    pub fn wait(&self) -> AsyncPidFdWait {
+    pub fn wait(&self) -> AsyncPidFdWait<'_> {
         AsyncPidFdWait { pidfd: &self.0 }
     }
 
     #[inline]
-    pub fn is_exited(&self) -> AsyncPidFdExited {
+    pub fn is_exited(&self) -> AsyncPidFdExited<'_> {
         AsyncPidFdExited { pidfd: &self.0 }
     }
 }

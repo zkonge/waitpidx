@@ -10,7 +10,8 @@ use std::{
 
 use rustix::{
     fd::{AsFd, BorrowedFd, OwnedFd},
-    pipe::{self, PipeFlags},
+    io::write,
+    pipe::{pipe_with, PipeFlags},
     process::Pid,
 };
 
@@ -54,7 +55,7 @@ impl NetlinkBackendInner {
         Ok(rx)
     }
 
-    fn handle_events(&self, timeout: Option<Duration>, aborter: BorrowedFd) -> Result<()> {
+    fn handle_events(&self, timeout: Option<Duration>, aborter: BorrowedFd<'_>) -> Result<()> {
         let mut buf = [0u8; NL_CONNECTOR_MAX_MSG_SIZE];
 
         loop {
@@ -63,7 +64,7 @@ impl NetlinkBackendInner {
             let mut interest_group = self.interest.lock().unwrap();
             if let Some(notifiers) = interest_group.remove(&pid) {
                 for notifier in notifiers {
-                    let _ = notifier.send(()); // don't care if the receiver is dropped
+                    _ = notifier.send(()); // don't care if the receiver is dropped
                 }
             }
 
@@ -85,7 +86,7 @@ pub struct NetlinkBackend {
 impl NetlinkBackend {
     pub fn new() -> Result<Self> {
         let inner = NetlinkBackendInner::new()?;
-        let (rx, tx) = pipe::pipe_with(PipeFlags::DIRECT | PipeFlags::CLOEXEC)?;
+        let (rx, tx) = pipe_with(PipeFlags::DIRECT | PipeFlags::CLOEXEC)?;
 
         thread::spawn({
             let inner = inner.clone();
@@ -110,8 +111,8 @@ impl NetlinkBackend {
 
 impl Drop for NetlinkBackend {
     fn drop(&mut self) {
-        let _ = self.inner.netlink.stop();
-        let _ = rustix::io::write(self.aborter.as_fd(), &[0u8]);
+        _ = self.inner.netlink.stop();
+        _ = write(self.aborter.as_fd(), &[0u8]);
     }
 }
 
