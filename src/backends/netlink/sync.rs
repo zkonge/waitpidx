@@ -1,16 +1,17 @@
 /// Sync netlink pid waiter
 use std::{
     collections::HashMap,
-    io::{Error, ErrorKind, Result},
+    io::{ErrorKind, Result},
     iter,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
+use crossbeam_channel::RecvTimeoutError;
 use rustix::{
     fd::{AsFd, BorrowedFd, OwnedFd},
-    io::write,
+    io::{write, Errno},
     pipe::{pipe_with, PipeFlags},
     process::Pid,
 };
@@ -24,7 +25,7 @@ type ExitReceiver = crossbeam_channel::Receiver<()>;
 #[derive(Debug)]
 struct NetlinkBackendInner {
     netlink: NetlinkConnection,
-    interest: Mutex<HashMap<Pid, Vec<ExitNotifier>>>,
+    interest: Mutex<HashMap<Pid, (ExitNotifier, ExitReceiver)>>,
 }
 
 impl NetlinkBackendInner {
@@ -42,6 +43,11 @@ impl NetlinkBackendInner {
     fn interest(&self, pid: Pid) -> Result<ExitReceiver> {
         let mut interest_group = self.interest.lock().unwrap();
 
+        // the process existence checking must in the lock scope or notify event would be dropped
+        if !utils::process_exists(pid) {
+            return Err(Errno::SRCH.into());
+        }
+
         let keys = interest_group
             .keys()
             .copied()
@@ -50,9 +56,11 @@ impl NetlinkBackendInner {
 
         self.netlink.interest(Some(keys.as_slice()))?;
 
-        let (tx, rx) = crossbeam_channel::bounded(0);
-        interest_group.entry(pid).or_default().push(tx);
-        Ok(rx)
+        let (_, rx) = interest_group
+            .entry(pid)
+            .or_insert(crossbeam_channel::bounded(0));
+
+        Ok(rx.clone())
     }
 
     fn handle_events(&self, timeout: Option<Duration>, aborter: BorrowedFd<'_>) -> Result<()> {
@@ -62,11 +70,9 @@ impl NetlinkBackendInner {
             let pid = self.netlink.read_event(&mut buf, timeout, aborter)?;
 
             let mut interest_group = self.interest.lock().unwrap();
-            if let Some(notifiers) = interest_group.remove(&pid) {
-                for notifier in notifiers {
-                    _ = notifier.send(()); // don't care if the receiver is dropped
-                }
-            }
+
+            // notify receivers by drop senders
+            interest_group.remove(&pid);
 
             let keys = interest_group.keys().copied().collect::<Vec<_>>();
             match self.netlink.interest(Some(&keys)) {
@@ -118,23 +124,17 @@ impl Drop for NetlinkBackend {
 
 impl Backend for NetlinkBackend {
     fn waitpid(&self, pid: Pid, timeout: Option<Duration>) -> Result<()> {
-        if !utils::process_exists(pid) {
-            return Err(Error::from_raw_os_error(libc::ESRCH));
-        }
-
         let rx = self.interest(pid)?;
 
         match timeout {
             Some(timeout) => match rx.recv_timeout(timeout) {
-                Ok(()) => Ok(()),
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                    Err(ErrorKind::TimedOut.into())
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    Err(ErrorKind::BrokenPipe.into())
-                }
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => Ok(()),
+                Err(RecvTimeoutError::Timeout) => Err(ErrorKind::TimedOut.into()),
             },
-            None => rx.recv().map_err(|_| ErrorKind::BrokenPipe.into()),
+            None => {
+                _ = rx.recv();
+                Ok(())
+            }
         }
     }
 }

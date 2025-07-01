@@ -1,23 +1,24 @@
 /// Async netlink waiter
 use std::{
     collections::HashMap,
-    io::{Error, ErrorKind, Result},
+    io::Result,
     iter,
     sync::{Arc, Mutex},
 };
 
-use rustix::process::Pid;
+use rustix::{io::Errno, process::Pid};
+use tokio::sync::watch;
 
 use super::{binding::NL_CONNECTOR_MAX_MSG_SIZE, connection::NetlinkConnection};
 use crate::{backends::AsyncBackend, utils};
 
-type AsyncExitNotifier = tokio::sync::oneshot::Sender<()>;
-type AsyncExitReceiver = tokio::sync::oneshot::Receiver<()>;
+type AsyncExitNotifier = watch::Sender<()>;
+type AsyncExitReceiver = watch::Receiver<()>;
 
 #[derive(Debug)]
 struct AsyncNetlinkBackendInner {
     netlink: NetlinkConnection,
-    interest: Mutex<HashMap<Pid, Vec<AsyncExitNotifier>>>,
+    interest: Mutex<HashMap<Pid, AsyncExitNotifier>>,
 }
 
 impl AsyncNetlinkBackendInner {
@@ -33,7 +34,12 @@ impl AsyncNetlinkBackendInner {
     }
 
     async fn interest(&self, pid: Pid) -> Result<AsyncExitReceiver> {
-        let mut interest_group = self.interest.lock().unwrap_or_else(|x| x.into_inner());
+        let mut interest_group = self.interest.lock().unwrap();
+
+        // the process existence checking must in the lock scope or notify event would be dropped
+        if !utils::process_exists(pid) {
+            return Err(Errno::SRCH.into());
+        }
 
         let keys = interest_group
             .keys()
@@ -43,9 +49,10 @@ impl AsyncNetlinkBackendInner {
 
         self.netlink.interest(Some(keys.as_slice()))?;
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        interest_group.entry(pid).or_default().push(tx);
-        Ok(rx)
+        // cleanup invalid entries in order to avoid memory leaks
+        let entry = interest_group.entry(pid).or_insert(watch::channel(()).0);
+
+        Ok(entry.subscribe())
     }
 
     async fn handle_events(&self) -> Result<()> {
@@ -55,11 +62,9 @@ impl AsyncNetlinkBackendInner {
             let pid = self.netlink.read_event_async(&mut buf).await?;
 
             let mut interest_group = self.interest.lock().unwrap_or_else(|x| x.into_inner());
-            if let Some(notifiers) = interest_group.remove(&pid) {
-                for notifier in notifiers {
-                    let _ = notifier.send(()); // don't care if the receiver is dropped
-                }
-            }
+
+            // notify receivers by drop senders
+            interest_group.remove(&pid);
 
             let keys = interest_group.keys().copied().collect::<Vec<_>>();
             match self.netlink.interest(Some(&keys)) {
@@ -108,14 +113,8 @@ impl Drop for AsyncNetlinkBackend {
 
 impl AsyncBackend for AsyncNetlinkBackend {
     async fn waitpid(&self, pid: Pid) -> Result<()> {
-        if !utils::process_exists(pid) {
-            return Err(Error::from_raw_os_error(libc::ESRCH));
-        }
+        _ = self.interest(pid).await?.changed().await;
 
-        let rx = self.interest(pid).await?;
-        match rx.await {
-            Ok(()) => Ok(()),
-            Err(_) => Err(ErrorKind::BrokenPipe.into()),
-        }
+        Ok(())
     }
 }
