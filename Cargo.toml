@@ -11,15 +11,15 @@ readme = "README.md"
 
 [dependencies]
 classic_bpf = { version = "0.1.1", optional = true }
-crossbeam-channel = { version = "0.5.11", optional = true }
-libc = "0.2"
-linux-raw-sys = { version = "0.6.3", features = ["netlink"], optional = true }
-rustix = { version = "0.38.30", features = ["event", "process"] }
-tokio = { version = "1.39.3", features = ["net"], optional = true }
+crossbeam-channel = { version = "0.5.15", optional = true }
+libc = "0.2.174"
+linux-raw-sys = { version = "0.9.4", features = ["netlink"], optional = true }
+rustix = { version = "1.0.7", features = ["event", "process"] }
+tokio = { version = "1.45.1", features = ["net"], optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.39.3", features = ["rt"] }
-futures-util = { version = "0.3.30", default-features = false, features = [
+tokio = { version = "1.45.1", features = ["rt"] }
+futures-util = { version = "0.3.31", default-features = false, features = [
     "alloc",
 ] }
 

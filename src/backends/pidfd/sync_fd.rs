@@ -5,7 +5,7 @@ use std::{
 };
 
 use rustix::{
-    event::{poll, PollFd, PollFlags},
+    event::{poll, PollFd, PollFlags, Timespec},
     process::{pidfd_open, Pid, PidfdFlags},
 };
 
@@ -19,13 +19,14 @@ impl PidFdInner {
     }
 
     fn waitpid(&self, timeout: Option<Duration>) -> Result<()> {
-        let timeout = match timeout {
-            Some(dur) => dur.as_millis().try_into().unwrap_or(i32::MAX),
-            None => -1, // infinity
-        };
+        let timeout: Option<Timespec> = timeout
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(|_| ErrorKind::InvalidInput)?;
 
         let mut fds = [PollFd::new(&self.0, PollFlags::IN)];
-        match poll(&mut fds, timeout)? {
+
+        match poll(&mut fds, timeout.as_ref())? {
             0 => Err(Error::from(ErrorKind::TimedOut)),
             _ => Ok(()),
         }

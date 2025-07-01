@@ -8,7 +8,7 @@ use std::{
 use libc::sockaddr;
 use linux_raw_sys::netlink;
 use rustix::{
-    event,
+    event::{self, poll, Timespec},
     fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
     net::{self, netlink as rustix_netlink, AddressFamily, RecvFlags, SendFlags, SocketType},
     process::{self, Pid},
@@ -86,12 +86,12 @@ impl NetlinkConnection {
         timeout: Option<Duration>,
         aborter_fd: BorrowedFd,
     ) -> Result<Pid> {
-        let timeout = match timeout {
-            Some(timeout) => timeout.as_millis().try_into().unwrap_or(i32::MAX),
-            None => -1,
-        };
+        let timeout: Option<Timespec> = timeout
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(|_| ErrorKind::InvalidInput)?;
 
-        let n = {
+        let (_, n) = {
             let nl_fd = self.fd.as_fd();
 
             let mut fds = [
@@ -99,7 +99,7 @@ impl NetlinkConnection {
                 event::PollFd::new(&aborter_fd, event::PollFlags::IN),
             ];
 
-            let poll_result = event::poll(&mut fds, timeout)?;
+            let poll_result = poll(&mut fds, timeout.as_ref())?;
 
             if poll_result == 0 {
                 return Err(ErrorKind::TimedOut.into());
@@ -108,7 +108,7 @@ impl NetlinkConnection {
             }
 
             // then netlink fd must be readable
-            net::recv(nl_fd, buf, RecvFlags::empty())?
+            net::recv(nl_fd, &mut *buf, RecvFlags::empty())?
         };
 
         if n == 0 {
@@ -132,9 +132,9 @@ impl NetlinkConnection {
             let mut guard = fd.readable().await?;
 
             match guard.try_io(|inner| {
-                net::recv(inner.get_ref(), buf, RecvFlags::empty()).map_err(Into::into)
+                net::recv(inner.get_ref(), &mut *buf, RecvFlags::empty()).map_err(Into::into)
             }) {
-                Ok(Ok(n)) => {
+                Ok(Ok((_, n))) => {
                     if n == 0 {
                         return Err(ErrorKind::UnexpectedEof.into());
                     }
