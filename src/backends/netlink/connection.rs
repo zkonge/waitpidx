@@ -100,7 +100,7 @@ impl NetlinkConnection {
         }
 
         // TODO: erase dirty data in buf
-        parse_netlink_event_message(buf).ok_or(ErrorKind::InvalidData.into())
+        parse_netlink_event_message(&buf[..n]).ok_or(ErrorKind::InvalidData.into())
     }
 
     // WARNING: multiple reader in the same time may cause unwanted behavior.
