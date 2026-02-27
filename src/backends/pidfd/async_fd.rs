@@ -22,6 +22,7 @@ impl PidFdInner {
     }
 }
 
+/// Future returned by [`AsyncPidFd::wait`].
 pub struct AsyncPidFdWait<'a> {
     pidfd: &'a PidFdInner,
 }
@@ -35,6 +36,7 @@ impl Future for AsyncPidFdWait<'_> {
     }
 }
 
+/// Future returned by [`AsyncPidFd::is_exited`].
 pub struct AsyncPidFdExited<'a> {
     pidfd: &'a PidFdInner,
 }
@@ -45,27 +47,43 @@ impl Future for AsyncPidFdExited<'_> {
     #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.pidfd.poll_exit(cx) {
-            Poll::Ready(x) => Poll::Ready(x.map(|_| true)),
+            Poll::Ready(x) => Poll::Ready(x.map(|()| true)),
             Poll::Pending => Poll::Ready(Ok(false)),
         }
     }
 }
 
 #[derive(Debug)]
+/// An asynchronous pidfd handle.
+///
+/// This type can be awaited directly, or used via [`AsyncPidFd::wait`] and
+/// [`AsyncPidFd::is_exited`].
 pub struct AsyncPidFd(PidFdInner);
 
 impl AsyncPidFd {
+    /// Open an async pidfd for `pid`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an OS error when opening pidfd fails.
     #[inline]
     pub fn new(pid: Pid) -> Result<Self> {
         PidFdInner::new(pid).map(Self)
     }
 
+    /// Return a future that resolves when the process exits.
     #[inline]
+    #[must_use]
     pub fn wait(&self) -> AsyncPidFdWait<'_> {
         AsyncPidFdWait { pidfd: &self.0 }
     }
 
+    /// Return a future that performs a non-blocking exit probe.
+    ///
+    /// The returned future always resolves immediately with `Ok(true)` when the
+    /// process is exited, or `Ok(false)` otherwise.
     #[inline]
+    #[must_use]
     pub fn is_exited(&self) -> AsyncPidFdExited<'_> {
         AsyncPidFdExited { pidfd: &self.0 }
     }

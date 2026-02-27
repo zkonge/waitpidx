@@ -1,3 +1,7 @@
+//! pidfd-based wait primitives.
+//!
+//! This module exposes low-level sync and async wrappers around Linux pidfds.
+
 #[cfg(feature = "async")]
 mod async_fd;
 mod sync_fd;
