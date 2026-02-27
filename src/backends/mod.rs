@@ -1,5 +1,3 @@
-#[cfg(feature = "netlink")]
-pub mod netlink;
 pub mod pidfd;
 
 use std::{io::Result, time::Duration};

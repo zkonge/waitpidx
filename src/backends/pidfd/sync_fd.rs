@@ -1,5 +1,5 @@
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::{ErrorKind, Result},
     os::fd::OwnedFd,
     time::Duration,
 };
@@ -28,7 +28,7 @@ impl PidFdInner {
         let mut fds = [PollFd::new(&self.0, PollFlags::IN)];
 
         match poll(&mut fds, timeout.as_ref())? {
-            0 => Err(Error::from(ErrorKind::TimedOut)),
+            0 => Err(ErrorKind::TimedOut.into()),
             _ => Ok(()),
         }
     }

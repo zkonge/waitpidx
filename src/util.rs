@@ -1,5 +1,3 @@
-pub(crate) mod incomplete_array;
-
 use rustix::{
     io::Errno,
     process::{test_kill_process, Pid},

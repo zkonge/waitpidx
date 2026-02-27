@@ -2,7 +2,7 @@
 name = "waitpidx"
 version = "0.0.0"
 authors = ["Konge <zkonge@outlook.com>"]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/zkonge/waitpidx"
 keywords = ["waitpid", "process", "linux"]
@@ -10,30 +10,24 @@ categories = ["os"]
 readme = "README.md"
 
 [dependencies]
-rustix = { version = "1.0.7", features = ["event", "process"] }
-
-classic_bpf = { version = "0.1.1", optional = true }
-crossbeam-channel = { version = "0.5.15", optional = true }
-linux-raw-sys = { version = "0.9.4", features = ["netlink"], optional = true }
-tokio = { version = "1.45.1", features = ["net"], optional = true }
+rustix = { version = "1.1.4", default-features = false, features = [
+    "std",
+    "event",
+    "process",
+] }
+tokio = { version = "1.49.0", default-features = false, features = [
+    "net",
+], optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.45.1", features = ["rt"] }
-futures-util = { version = "0.3.31", default-features = false, features = [
+tokio = { version = "1.49.0", features = ["rt"] }
+futures-util = { version = "0.3.32", default-features = false, features = [
     "alloc",
 ] }
 
 [features]
 default = ["async"]
 async = ["dep:tokio"]
-netlink = [
-    "dep:classic_bpf",
-    "dep:crossbeam-channel",
-    "dep:linux-raw-sys",
-    "rustix/pipe",
-    "rustix/net",
-]
-async-netlink = ["async", "netlink", "tokio/rt", "tokio/sync"]
 
 [[example]]
 name = "waitpid_async"
